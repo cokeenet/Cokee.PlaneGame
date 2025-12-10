@@ -45,7 +45,6 @@ class PlaneGame
 {
 protected:
 	GameObject player;
-	// 移除大括号初始化，在构造函数或 InitializeGame 中处理
 	vector<GameObject> enemy;
 	vector<GameObject> bullet;
 

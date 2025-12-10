@@ -2,65 +2,25 @@
 #include "PlaneGame.h"
 #include <easyx.h>
 #include <tchar.h>
-
-// 修复宏冲突的关键：阻止 Windows.h 定义 min/max 宏
-#define NOMINMAX
-
 #include <Windows.h>
 #include <time.h>
-#include <algorithm> // 用于 std::min 和 std::max
-
-using namespace std;
-
-// 计时器ID定义（用于 timerArrive 函数的第一个参数）
-// 范围 0-99 (对应 vector<DWORD> t(100))
-#define TIMER_ID_ENEMY_CREATE 1 // 敌人生成计时器
-#define TIMER_ID_BULLET_SHOT 2	// 子弹发射计时器
-
-// 辅助函数：限制玩家移动范围
-void ClampPlayerPosition(GameObject &player)
-{
-	player.x = min(player.x, WINDOW_WIDTH - player.width);
-	player.y = min(player.y, WINDOW_HEIGHT - player.height);
-}
 
 void PlaneGame::InitializeGame()
 {
 	initgraph(WINDOW_WIDTH, WINDOW_HEIGHT);
-
-	// 确保向量有足够的大小
-	if (enemy.empty())
-		enemy.resize(ENEMY_NUM);
-	if (bullet.empty())
-		bullet.resize(BULLET_NUM);
-
-	// 手动初始化所有敌机和子弹为“死亡”状态，确保干净启动
-	for (int i = 0; i < ENEMY_NUM; i++)
-	{
-		enemy[i].alive = false;
-		enemy[i].hp = 0;
-		enemy[i].x = 0;
-		enemy[i].y = 0;
-	}
-	for (int i = 0; i < BULLET_NUM; i++)
-	{
-		bullet[i].alive = false;
-	}
-
-	// 统一初始化玩家属性
+	player.x = WINDOW_WIDTH / 2 - 40;
+	player.y = WINDOW_HEIGHT - 100;
+	player.speed = 5;
+	player.alive = true;
 	player.width = 102;
 	player.height = 126;
-	player.speed = 5;
-	player.x = WINDOW_WIDTH / 2 - player.width / 2;
-	player.y = WINDOW_HEIGHT - 100 - player.height / 2;
-	player.alive = true;
-	player.hp = PLAYER_MAX_HP;
+	player.hp = PLAYER_MAX_HP; // 初始化玩家血量
 
 	loadimage(&imgBackground, _T("./images/background.png"), WINDOW_WIDTH, WINDOW_HEIGHT);
 	loadimage(&imgPlayer, _T("./images/me.png"), player.width, player.height);
 	loadimage(&imgBullet, _T("./images/bullet.png"), 5, 11);
 
-	// 加载敌机图片
+	// 加载不同类型敌人的图片
 	loadimage(&imgEnemy1, _T("./images/enemy1.png"), 46, 35);
 	loadimage(&imgEnemy1Down[0], _T("./images/enemy1_down1.png"), 46, 35);
 	loadimage(&imgEnemy1Down[1], _T("./images/enemy1_down2.png"), 46, 35);
@@ -86,22 +46,26 @@ void PlaneGame::InitializeGame()
 	SetWindowTextA(hWnd, "飞机大战游戏");
 }
 
-// 绘制血条函数 - 保持不变
+// 绘制血条函数
 void PlaneGame::DrawHealthBar(int x, int y, int width, int height, int currentHP, int maxHP)
 {
+	// 血条参数
 	int barWidth = width;
 	int barHeight = height;
 	int barX = x;
 	int barY = y;
 
+	// 绘制背景（灰色）
 	setfillcolor(RGB(100, 100, 100));
 	setlinecolor(RGB(50, 50, 50));
 	setbkmode(TRANSPARENT);
 	solidroundrect(barX, barY, barX + barWidth, barY + barHeight, 2, 2);
 
+	// 绘制血量（根据当前血量比例填充绿色到红色）
 	int hpWidth = (int)((float)currentHP / maxHP * barWidth);
 	if (hpWidth > 0)
 	{
+		// 根据血量比例计算颜色（绿色到红色）
 		int red = (int)(255 * (1.0f - (float)currentHP / maxHP));
 		int green = (int)(255 * ((float)currentHP / maxHP));
 		setfillcolor(RGB(red, green, 0));
@@ -110,13 +74,14 @@ void PlaneGame::DrawHealthBar(int x, int y, int width, int height, int currentHP
 	}
 }
 
-// 新增函数：根据敌人类型绘制敌人 - 保持不变
+// 新增函数：根据敌人类型绘制敌人
 void PlaneGame::DrawEnemy(int index)
 {
 	if (index < 0 || index >= ENEMY_NUM)
 		return;
 
 	GameObject &e = enemy[index];
+	// 只绘制存活的敌人
 	if (!e.alive)
 		return;
 
@@ -160,10 +125,11 @@ void PlaneGame::DrawEnemy(int index)
 		// 绘制敌机血条（仅对有血量的敌人）
 		if (e.hp > 0)
 		{
+			// 根据敌人类型确定血条尺寸
 			int barWidth = e.width;
 			int barHeight = 6;
 			int barX = e.x;
-			int barY = e.y - 10;
+			int barY = e.y - 10; // 血条在敌人上方
 
 			DrawHealthBar(barX, barY, barWidth, barHeight, e.hp, ENEMY_HP);
 		}
@@ -180,8 +146,8 @@ void PlaneGame::Draw()
 	}
 
 	// 绘制背景图片两次以实现无缝滚动
-	putimage(0, (int)BackgroundY, &imgBackground);
-	putimage(0, (int)BackgroundY - WINDOW_HEIGHT, &imgBackground);
+	putimage(0, BackgroundY, &imgBackground);
+	putimage(0, BackgroundY - WINDOW_HEIGHT, &imgBackground);
 
 	// 绘制玩家血条
 	DrawHealthBar(10, 10, 200, 20, player.hp, PLAYER_MAX_HP);
@@ -202,77 +168,73 @@ void PlaneGame::Draw()
 			drawAlpha(&imgBullet, bullet[i].x, bullet[i].y);
 	}
 }
-
 void PlaneGame::BulletMove()
 {
 	for (int i = 0; i < BULLET_NUM; i++)
 	{
 		if (bullet[i].alive)
 		{
-			bullet[i].y -= BULLET_SPEED;
-			if (bullet[i].y <= -11)
+			bullet[i].y = bullet[i].y - BULLET_SPEED;
+			if (bullet[i].y <= 0)
 			{
 				bullet[i].alive = false;
 			}
 		}
 	}
 }
-
 void PlaneGame::EnemyMove()
 {
-	// 注意：这里仍然使用 clock() 来控制动画的帧率，因为它与运动逻辑分开，且与游戏主循环无关。
 	DWORD currentTime = clock();
-	const int FRAME_DURATION_SMALL_MEDIUM = 100;
-	const int FRAME_DURATION_LARGE = 80;
 
 	for (int i = 0; i < ENEMY_NUM; i++)
 	{
-		GameObject &e = enemy[i];
-
-		if (e.alive)
+		if (enemy[i].alive)
 		{
-			e.y += e.speed;
+			enemy[i].y += enemy[i].speed;
 
-			// 敌人飞出屏幕底部则销毁（仅对存活且未爆炸的敌人）
-			if (e.hp > 0 && e.y > WINDOW_HEIGHT)
-			{
-				e.alive = false;
-				e.hp = 0;
-				e.animationFrame = 0;
-				e.x = 0;
-				e.y = 0;
-			}
 			// 更新爆炸动画帧
-			else if (e.hp <= 0)
+			if (enemy[i].hp <= 0)
 			{
-				int duration = (e.type == ENEMY_LARGE) ? FRAME_DURATION_LARGE : FRAME_DURATION_SMALL_MEDIUM;
-
-				if ((currentTime - e.lastAnimTime) > duration)
+				if (currentTime - enemy[i].lastAnimTime > 100) // 每100毫秒切换一帧
 				{
-					e.animationFrame++;
-					e.lastAnimTime = currentTime;
+					enemy[i].animationFrame++;
+					enemy[i].lastAnimTime = currentTime;
 
+					// 动画播放完毕后销毁敌人
 					bool animFinished = false;
-					switch (e.type)
+					switch (enemy[i].type)
 					{
 					case ENEMY_SMALL:
+						animFinished = (enemy[i].animationFrame >= 4);
+						break;
 					case ENEMY_MEDIUM:
-						animFinished = (e.animationFrame >= 4);
+						animFinished = (enemy[i].animationFrame >= 4);
 						break;
 					case ENEMY_LARGE:
-						animFinished = (e.animationFrame >= 6);
+						animFinished = (enemy[i].animationFrame >= 6);
 						break;
 					}
 
 					if (animFinished)
 					{
-						e.alive = false;
-						e.hp = 0;
-						e.animationFrame = 0;
-						e.x = 0;
-						e.y = 0;
+						// 完全重置敌机状态
+						enemy[i].alive = false;
+						enemy[i].hp = 0;
+						enemy[i].animationFrame = 0;
+						enemy[i].x = 0;
+						enemy[i].y = 0;
 					}
 				}
+			}
+			// 敌人飞出屏幕底部则销毁
+			else if (enemy[i].y > WINDOW_HEIGHT)
+			{
+				// 完全重置敌机状态
+				enemy[i].alive = false;
+				enemy[i].hp = 0;
+				enemy[i].animationFrame = 0;
+				enemy[i].x = 0;
+				enemy[i].y = 0;
 			}
 		}
 	}
@@ -282,28 +244,28 @@ void PlaneGame::EnemyDead()
 {
 	for (int i = 0; i < ENEMY_NUM; i++)
 	{
-		GameObject &e = enemy[i];
-		if (e.alive && e.hp > 0)
+		if (enemy[i].alive && enemy[i].hp > 0) // 只检测未被击毁的敌人
 		{
 			for (int j = 0; j < BULLET_NUM; j++)
 			{
-				GameObject &b = bullet[j];
-				if (b.alive)
+				if (bullet[j].alive)
 				{
 					// 简单的碰撞检测
-					if (b.x >= e.x &&
-						b.x <= e.x + e.width &&
-						b.y >= e.y &&
-						b.y <= e.y + e.height)
+					if (bullet[j].x >= enemy[i].x &&
+						bullet[j].x <= enemy[i].x + enemy[i].width &&
+						bullet[j].y >= enemy[i].y &&
+						bullet[j].y <= enemy[i].y + enemy[i].height)
 					{
-						e.hp--;
-						b.alive = false; // 子弹销毁
+						// 减少敌机血量（每次命中减少1点血量）
+						enemy[i].hp--;
+						bullet[j].alive = false;
 
-						if (e.hp <= 0)
+						// 敌人生命值降到0时开始爆炸动画
+						if (enemy[i].hp <= 0)
 						{
-							// 敌人生命值降到0时开始爆炸动画
-							e.animationFrame = 0;
-							e.lastAnimTime = clock();
+							enemy[i].animationFrame = 0;
+							enemy[i].lastAnimTime = clock();
+							// 注意：这里不立即设置alive=false，因为敌机需要播放爆炸动画
 						}
 						break;
 					}
@@ -317,28 +279,27 @@ void PlaneGame::PlayerDead()
 {
 	for (int i = 0; i < ENEMY_NUM; i++)
 	{
-		GameObject &e = enemy[i];
-
-		if (e.alive && e.hp > 0)
+		if (enemy[i].alive)
 		{
-			// 精确的矩形相交检测
-			if (player.x < e.x + e.width &&
-				player.x + player.width > e.x &&
-				player.y < e.y + e.height &&
-				player.y + player.height > e.y)
+			// 更精确的碰撞检测（矩形相交检测）
+			if (player.x + player.width > enemy[i].x &&
+				player.x < enemy[i].x + enemy[i].width &&
+				player.y + player.height > enemy[i].y &&
+				player.y < enemy[i].y + enemy[i].height)
 			{
+				// 碰撞发生，扣除玩家血量
 				player.hp -= PLAYER_DAMAGE_PER_COLLISION;
-				player.hp = std::max(0, player.hp); // 确保血量不为负
-
 				if (player.hp <= 0)
 				{
+					player.hp = 0;
 					player.alive = false;
 				}
 
 				// 敌机也被摧毁，进入爆炸状态
-				e.hp = 0;
-				e.animationFrame = 0;
-				e.lastAnimTime = clock();
+				enemy[i].hp = 0;
+				enemy[i].animationFrame = 0;
+				enemy[i].lastAnimTime = clock();
+				// 注意：这里不立即设置alive=false，因为敌机需要播放爆炸动画
 			}
 		}
 	}
@@ -346,64 +307,57 @@ void PlaneGame::PlayerDead()
 
 void PlaneGame::CreateEnemy()
 {
-	// >>> 替换：移除静态计时逻辑，由 Run 函数中的 timerArrive 控制 <<<
-	// const DWORD CREATE_INTERVAL = 1000; // 1秒生成一批敌人
-	const int MAX_BATCH_SIZE = 4;
+	static DWORD lastCreateTime = 0;
+	DWORD currentTime = clock();
 
-	// Note: 现在的 CreateEnemy 每次被 Run() 调用时，如果 timerArrive(1, 1000) 返回 true，
-	// 就会执行一次生成批次。
+	// 控制敌人生成频率
+	if (currentTime - lastCreateTime < 100) // 100毫秒生成一次敌人批次
+		return;
 
-	int enemiesToCreate = 1 + rand() % MAX_BATCH_SIZE;
+	lastCreateTime = currentTime;
+
+	// 尝试创建多个敌人（最多3个）
+	int enemiesToCreate = 1 + rand() % 3; // 随机创建1-3个敌人
 
 	for (int i = 0; i < ENEMY_NUM && enemiesToCreate > 0; i++)
 	{
-		GameObject &e = enemy[i];
-
-		// 只在敌机槽位完全空闲时创建新敌机
-		if (!e.alive && e.hp <= 0)
+		// 只在敌人完全不存在时（不仅alive为false，而且不在爆炸动画中）才创建新敌人
+		if (!enemy[i].alive && enemy[i].hp <= 0)
 		{
+			// 随机生成敌人类型（按要求调整概率分布）
 			int enemyType = rand() % 100;
 
-			int hpValue;
-			int widthValue;
-			int heightValue;
-			float speedFactor;
-
-			if (enemyType < 40) // 40% 小敌机
+			if (enemyType < 40) // 40%概率生成小敌机
 			{
-				e.type = ENEMY_SMALL;
-				hpValue = 1;
-				widthValue = 46;
-				heightValue = 35;
-				speedFactor = 1.0f;
+				enemy[i].type = ENEMY_SMALL;
+				enemy[i].width = 46;
+				enemy[i].height = 35;
+				enemy[i].hp = 3; // 设置为3点血量，三发子弹打爆
+				enemy[i].speed = ENEMY_SPEED;
 			}
-			else if (enemyType < 80) // 40% 中敌机
+			else if (enemyType < 80) // 40%概率生成中敌机
 			{
-				e.type = ENEMY_MEDIUM;
-				hpValue = 3;
-				widthValue = 69;
-				heightValue = 99;
-				speedFactor = 0.7f;
+				enemy[i].type = ENEMY_MEDIUM;
+				enemy[i].width = 69;
+				enemy[i].height = 99;
+				enemy[i].hp = 3; // 设置为3点血量，三发子弹打爆
+				enemy[i].speed = ENEMY_SPEED * 0.7;
 			}
-			else // 20% 大敌机
+			else // 20%概率生成大敌机
 			{
-				e.type = ENEMY_LARGE;
-				hpValue = 8;
-				widthValue = 165;
-				heightValue = 261;
-				speedFactor = 0.5f;
+				enemy[i].type = ENEMY_LARGE;
+				enemy[i].width = 165;
+				enemy[i].height = 261;
+				enemy[i].hp = 3; // 设置为3点血量，三发子弹打爆
+				enemy[i].speed = ENEMY_SPEED * 0.5;
 			}
 
-			e.width = widthValue;
-			e.height = heightValue;
-			e.hp = hpValue;
-			e.speed = ENEMY_SPEED * speedFactor;
+			enemy[i].x = rand() % (WINDOW_WIDTH - enemy[i].width);
+			enemy[i].y = 0 - enemy[i].height;
+			enemy[i].alive = true;
+			enemy[i].animationFrame = 0;
+			enemy[i].lastAnimTime = currentTime;
 
-			e.x = rand() % (WINDOW_WIDTH - e.width);
-			e.y = 0 - e.height;
-			e.alive = true;
-			e.animationFrame = 0;
-			e.lastAnimTime = clock(); // 爆炸计时仍使用 clock()
 			enemiesToCreate--;
 		}
 	}
@@ -411,92 +365,70 @@ void PlaneGame::CreateEnemy()
 
 void PlaneGame::CreateBullet()
 {
-	// >>> 替换：移除静态计时逻辑，由 Run 函数中的 timerArrive 控制 <<<
-	// 仅在玩家存活时尝试发射子弹
-	if (player.alive && GetAsyncKeyState(VK_SPACE))
-	{
-		// Note: 射速现在由 Run() 中的 timerArrive(2, 150) 控制
-
+	if (GetAsyncKeyState(VK_SPACE))
 		for (int i = 0; i < BULLET_NUM; i++)
 		{
 			if (!bullet[i].alive)
 			{
-				bullet[i].x = player.x + player.width / 2 - 2;
+				bullet[i].x = player.x + player.width / 2;
 				bullet[i].y = player.y;
 				bullet[i].alive = true;
-				// lastShotTime = currentTime; // 移除静态时间记录
 				break;
 			}
 		}
-	}
 }
 
 void PlaneGame::PlayerMove()
 {
-	int dx = 0;
-	int dy = 0;
-
 	if (GetAsyncKeyState(VK_UP))
-		dy -= player.speed;
+	{
+		player.y = player.y - 5;
+		if (player.y < 0)
+			player.y = 0;
+	}
 	if (GetAsyncKeyState(VK_DOWN))
-		dy += player.speed;
+	{
+		player.y = player.y + 5;
+		if (player.y > WINDOW_HEIGHT - 80)
+			player.y = WINDOW_HEIGHT - 80;
+	}
 	if (GetAsyncKeyState(VK_LEFT))
-		dx -= player.speed;
+	{
+		player.x = player.x - 5;
+		if (player.x < 0)
+			player.x = 0;
+	}
 	if (GetAsyncKeyState(VK_RIGHT))
-		dx += player.speed;
-
-	player.x += dx;
-	player.y += dy;
-
-	ClampPlayerPosition(player);
+	{
+		player.x = player.x + 5;
+		if (player.x > WINDOW_WIDTH - 63)
+			player.x = WINDOW_WIDTH - 63;
+	}
 }
 
 void PlaneGame::Run()
 {
-	BeginBatchDraw();
-	while (player.alive)
+
+	BeginBatchDraw(); // 开启批量绘制
+	while (1)
 	{
 		Draw();
-
-		PlayerMove();
-
-		// >>> 核心修改：使用 timerArrive 控制子弹发射和敌人生成 <<<
-
-		// 子弹发射：每 150 毫秒尝试发射一次 (使用 TIMER_ID_BULLET_SHOT = 2)
-		if (timerArrive(TIMER_ID_BULLET_SHOT, 150))
-		{
+		// 循环判断有没有按键，移动player
+		if (timerArrive(0, 10))
+			PlayerMove();
+		if (timerArrive(1, 200))
 			CreateBullet();
-		}
-
-		// 敌人生成：每 1000 毫秒（1秒）尝试生成一批敌人 (使用 TIMER_ID_ENEMY_CREATE = 1)
-		if (timerArrive(TIMER_ID_ENEMY_CREATE, 1000))
-		{
+		if (timerArrive(2, 100)) // 更频繁地尝试生成敌人
 			CreateEnemy();
-		}
-		// -------------------------------------------------------------
-
-		BulletMove();
 		EnemyMove();
 		EnemyDead();
 		PlayerDead();
+		BulletMove();
 
 		FlushBatchDraw();
-
+		// 有没有ESC键按下
 		if (GetAsyncKeyState(VK_ESCAPE))
 			break;
 	}
-
-	// 游戏结束画面（可选）
-	if (!player.alive)
-	{
-		settextcolor(RED);
-		settextstyle(50, 0, _T("微软雅黑"));
-		RECT r = {0, 0, WINDOW_WIDTH, WINDOW_HEIGHT};
-		drawtext(_T("G A M E   O V E R"), &r, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-		FlushBatchDraw();
-		Sleep(3000);
-	}
-
-	EndBatchDraw();
 	closegraph();
 }
